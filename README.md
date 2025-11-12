@@ -95,10 +95,12 @@
 ## 🛠️ 开发与部署
 
 ```sh
-# 安装 node 版本
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+# 安装 node 版本 22.16.0
 nvm i && nvm use
 
-# 安装依赖
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+# 安装依赖 10.21.0
 pnpm i
 
 # 启动开发模式
