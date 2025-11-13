@@ -19,7 +19,7 @@ for app_ver in $RELEASE_DIR/*; do
         echo "VER_GOLANG: $VER_GOLANG"
         echo "VER_ALPINE: $VER_ALPINE"
 
-        docker build --build-arg VER_APP=$VER_APP --build-arg VER_NGX=$VER_NGX -f "$app_ver/Dockerfile.nginx" -t "$REPO_NAME:${VER_APP}-nginx" "$app_ver"
+        podman build --build-arg VER_APP=$VER_APP --build-arg VER_NGX=$VER_NGX -f "$app_ver/Dockerfile.nginx" -t "$REPO_NAME:${VER_APP}-nginx" "$app_ver"
     fi
 
 done

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wechat-article-editor
+  labels:
+    app: wechat-article-editor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wechat-article-editor
+  template:
+    metadata:
+      labels:
+        app: wechat-article-editor
+    spec:
+      containers:
+        - name: wechat-article-editor
+          image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/wechat-article-editor:v20251113r0
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5

@@ -19,7 +19,7 @@ for app_ver in $RELEASE_DIR/*; do
         echo "VER_GOLANG: $VER_GOLANG"
         echo "VER_ALPINE: $VER_ALPINE"
 
-        docker build --build-arg VER_APP=$VER_APP -f "$app_ver/Dockerfile.base" -t "$REPO_NAME:${VER_APP}-assets" "$app_ver"
+        podman build  --ulimit nofile=10000:10000 --build-arg VER_APP=$VER_APP -f "$app_ver/Dockerfile.base" -t "$REPO_NAME:${VER_APP}-assets" "$app_ver"
     fi
 
 done
