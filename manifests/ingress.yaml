@@ -3,11 +3,11 @@ kind: Ingress
 metadata:
   name: wechat-article-editor
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt
 spec:
-  ingressClassName: nginx # 根据你的 ingress controller 修改
+  ingressClassName: nginx
   rules:
-    - host: md.editor.72602.online
+    - host: wechat.editor.72602.online
       http:
         paths:
           - path: /
@@ -19,5 +19,5 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - md.editor.72602.online
+        - wechat.editor.72602.online
       secretName: wechat-article-editor-tls
