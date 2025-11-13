@@ -100,6 +100,17 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 nvm i && nvm use
 
 curl -fsSL https://get.pnpm.io/install.sh | sh -
+
+# Next configuration changes were made:
+# export PNPM_HOME="/root/.local/share/pnpm"
+# case ":$PATH:" in
+#   *":$PNPM_HOME:"*) ;;
+#   *) export PATH="$PNPM_HOME:$PATH" ;;
+# esac
+
+# To start using pnpm, run:
+# source /root/.bashrc
+
 # 安装依赖 10.21.0
 pnpm i
 
