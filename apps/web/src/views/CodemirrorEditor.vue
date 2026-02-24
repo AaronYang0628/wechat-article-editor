@@ -8,20 +8,23 @@ import { markdownSetup, theme } from '@md/shared/editor'
 import imageCompression from 'browser-image-compression'
 import { Eye, Pen } from 'lucide-vue-next'
 import { SidebarAIToolbar } from '@/components/ai'
+import FolderSourcePanel from '@/components/editor/FolderSourcePanel.vue'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { SearchTab } from '@/components/ui/search-tab'
+import { useImageUploader } from '@/composables/useImageUploader'
 import { useCssEditorStore } from '@/stores/cssEditor'
 import { useEditorStore } from '@/stores/editor'
 import { usePostStore } from '@/stores/post'
 import { useRenderStore } from '@/stores/render'
 import { useThemeStore } from '@/stores/theme'
 import { useUIStore } from '@/stores/ui'
-import { checkImage, store, toBase64 } from '@/utils'
+import { checkImage, toBase64 } from '@/utils'
 import { fileUpload } from '@/utils/file'
+import { store } from '@/utils/storage'
 
 const editorStore = useEditorStore()
 const postStore = usePostStore()
@@ -29,6 +32,7 @@ const renderStore = useRenderStore()
 const themeStore = useThemeStore()
 const uiStore = useUIStore()
 const cssEditorStore = useCssEditorStore()
+const { upload } = useImageUploader()
 
 const { editor } = storeToRefs(editorStore)
 const { output } = storeToRefs(renderStore)
@@ -39,8 +43,10 @@ const {
   isMobile,
   isEditOnLeft,
   isOpenPostSlider,
+  isOpenFolderPanel,
   isOpenRightSlider,
   isOpenConfirmDialog,
+  enableImageReupload,
 } = storeToRefs(uiStore)
 
 const { toggleShowUploadImgDialog } = uiStore
@@ -50,15 +56,7 @@ function editorRefresh() {
   themeStore.updateCodeTheme()
 
   const raw = editorStore.getContent()
-  renderStore.render(raw, {
-    isCiteStatus: themeStore.isCiteStatus,
-    legend: themeStore.legend,
-    isUseIndent: themeStore.isUseIndent,
-    isUseJustify: themeStore.isUseJustify,
-    isCountStatus: themeStore.isCountStatus,
-    isMacCodeBlock: themeStore.isMacCodeBlock,
-    isShowLineNumber: themeStore.isShowLineNumber,
-  })
+  renderStore.render(raw)
 }
 
 // Reset style function
@@ -220,6 +218,20 @@ function openSearchWithSelection(view: EditorView) {
   }
 }
 
+function openReplaceWithSelection(view: EditorView) {
+  const selection = view.state.selection.main
+  const selected = view.state.doc.sliceString(selection.from, selection.to).trim()
+
+  if (searchTabRef.value) {
+    // SearchTab 已准备好，直接使用
+    searchTabRef.value.setSearchWithReplace(selected)
+  }
+  else {
+    // SearchTab 还没准备好，通过 UI Store 触发
+    uiStore.openSearchTab(selected, true)
+  }
+}
+
 // 监听 searchTabRef 的变化，处理待处理的请求
 watch(searchTabRef, (newRef) => {
   if (newRef && pendingSearchRequest.value) {
@@ -231,6 +243,30 @@ watch(searchTabRef, (newRef) => {
       newRef.showSearchTab = true
     }
     pendingSearchRequest.value = null
+  }
+})
+
+// 监听 UI Store 中的搜索请求
+const { searchTabRequest } = storeToRefs(uiStore)
+watch(searchTabRequest, (request) => {
+  if (request && searchTabRef.value) {
+    const { word, showReplace } = request
+
+    // 根据是否需要替换功能，调用不同的方法
+    if (showReplace) {
+      searchTabRef.value.setSearchWithReplace(word)
+    }
+    else {
+      if (word) {
+        searchTabRef.value.setSearchWord(word)
+      }
+      else {
+        searchTabRef.value.showSearchTab = true
+      }
+    }
+
+    // 清除请求
+    uiStore.clearSearchTabRequest()
   }
 })
 
@@ -461,6 +497,7 @@ function createFormTextArea(dom: HTMLDivElement) {
     extensions: [
       markdownSetup({
         onSearch: openSearchWithSelection,
+        onReplace: openReplaceWithSelection,
       }),
       themeCompartment.of(theme(isDark.value)),
       EditorView.updateListener.of((update) => {
@@ -480,6 +517,128 @@ function createFormTextArea(dom: HTMLDivElement) {
           }, 300)
         }
       }),
+      EditorView.domEventHandlers({
+        paste: (event, view) => {
+          // 1. 处理剪贴板中的文件 (截图/复制文件)
+          if (event.clipboardData?.items && [...event.clipboardData.items].some(item => item.kind === 'file')) {
+            if (isImgLoading.value) {
+              return true
+            }
+            Promise.all(
+              [...event.clipboardData.items]
+                .map(item => item.getAsFile())
+                .filter(item => item != null)
+                .map(async item => (await beforeImageUpload(item!)) ? item : null),
+            ).then((items) => {
+              const validItems = items.filter(item => item != null) as File[]
+              if (validItems.length === 0) {
+                return
+              }
+              // start progress
+              const intervalId = setInterval(() => {
+                const newProgress = progressValue.value + 1
+                if (newProgress >= 100) {
+                  return
+                }
+                progressValue.value = newProgress
+              }, 100)
+
+              const processFiles = async () => {
+                for (const item of validItems) {
+                  await uploadImage(item)
+                }
+                clearInterval(intervalId)
+                progressValue.value = 100
+                setTimeout(() => {
+                  progressValue.value = 0
+                }, 1000)
+              }
+              processFiles()
+            })
+            return true
+          }
+
+          // 2. 处理剪贴板中的文本 (检测 Markdown 图片链接)
+          const text = event.clipboardData?.getData('text/plain')
+          if (text) {
+            // 匹配 ![alt](url) 格式
+            const mdImgRegex = /!\[(.*?)\]\((https?:\/\/[^)]+)\)/g
+            const matches = [...text.matchAll(mdImgRegex)]
+
+            if (matches.length > 0) {
+              isImgLoading.value = true
+
+              // 2.1 插入带有唯一 ID 的占位文本
+              let previewText = text
+              const placeholderMap = new Map<string, { originalUrl: string, originalAlt: string }>()
+
+              // 使用 replace 来生成唯一的占位符
+              let matchIndex = 0
+              previewText = previewText.replace(mdImgRegex, (_, alt, url) => {
+                const id = `LOADING_${Date.now()}_${matchIndex++}`
+                placeholderMap.set(id, { originalUrl: url, originalAlt: alt })
+                return `![⏳ 转存中...](${id})`
+              })
+
+              // 插入占位文本到编辑器
+              view.dispatch(view.state.replaceSelection(previewText))
+
+              // 2.2 提取唯一 URL 进行并发转存
+              const uniqueUrls = [...new Set(matches.map(m => m[2]))]
+
+              // 并发处理
+              Promise.all(uniqueUrls.map(async (url) => {
+                try {
+                  // 根据开关决定是否转存
+                  const newUrl = enableImageReupload.value ? await upload(url) : url
+
+                  // 2.3 转存成功后（或直接使用原URL），精确替换编辑器中的对应内容
+                  // 遍历 map，找到所有 originalUrl 为当前 url 的占位符 ID
+                  for (const [id, info] of placeholderMap.entries()) {
+                    if (info.originalUrl === url) {
+                      // 查找该 ID 在文档中的位置
+                      const searchStr = `![⏳ 转存中...](${id})`
+                      const currentDoc = view.state.doc.toString()
+                      const pos = currentDoc.indexOf(searchStr)
+
+                      if (pos !== -1) {
+                        const newText = `![${info.originalAlt}](${newUrl})`
+                        view.dispatch({
+                          changes: { from: pos, to: pos + searchStr.length, insert: newText },
+                        })
+                      }
+                    }
+                  }
+                }
+                catch (e) {
+                  console.error(`转存失败: ${url}`, e)
+                  // 失败时，将占位符恢复为原样
+                  for (const [id, info] of placeholderMap.entries()) {
+                    if (info.originalUrl === url) {
+                      const searchStr = `![⏳ 转存中...](${id})`
+                      const currentDoc = view.state.doc.toString()
+                      const pos = currentDoc.indexOf(searchStr)
+
+                      if (pos !== -1) {
+                        const newText = `![${info.originalAlt}](${info.originalUrl})`
+                        view.dispatch({
+                          changes: { from: pos, to: pos + searchStr.length, insert: newText },
+                        })
+                      }
+                    }
+                  }
+                  toast.error(`图片转存失败，已保留原链接`)
+                }
+              })).finally(() => {
+                isImgLoading.value = false
+              })
+
+              return true
+            }
+          }
+          return false
+        },
+      }),
     ],
   })
 
@@ -490,45 +649,6 @@ function createFormTextArea(dom: HTMLDivElement) {
   })
 
   codeMirrorView.value = view
-
-  // 添加粘贴事件监听
-  view.dom.addEventListener(`paste`, async (event: ClipboardEvent) => {
-    if (!(event.clipboardData?.items) || isImgLoading.value) {
-      return
-    }
-    const items = await Promise.all(
-      [...event.clipboardData.items]
-        .map(item => item.getAsFile())
-        .filter(item => item != null)
-        .map(async item => (await beforeImageUpload(item!)) ? item : null),
-    )
-    const validItems = items.filter(item => item != null) as File[]
-    // 即使return了，粘贴的文本内容也会被插入
-    if (validItems.length === 0) {
-      return
-    }
-    // start progress
-    const intervalId = setInterval(() => {
-      const newProgress = progressValue.value + 1
-      if (newProgress >= 100) {
-        return
-      }
-      progressValue.value = newProgress
-    }, 100)
-    for (const item of validItems) {
-      event.preventDefault()
-      await uploadImage(item)
-    }
-    const cleanup = () => {
-      clearInterval(intervalId)
-      progressValue.value = 100 // 设置完成状态
-      // 可选：延迟一段时间后重置进度
-      setTimeout(() => {
-        progressValue.value = 0
-      }, 1000)
-    }
-    cleanup()
-  })
 
   // 返回编辑器 view
   return view
@@ -568,6 +688,8 @@ watch(isDark, () => {
       effects: themeCompartment.reconfigure(theme(isDark.value)),
     })
   }
+  // 重新渲染 markdown 以更新 infographic 等扩展的主题
+  editorRefresh()
 })
 
 // 监听当前文章切换，更新编辑器内容
@@ -652,6 +774,14 @@ onUnmounted(() => {
             <PostSlider />
           </ResizablePanel>
           <ResizableHandle class="hidden md:block" />
+          <ResizablePanel
+            :default-size="isOpenFolderPanel ? 15 : 0"
+            :max-size="isOpenFolderPanel ? 25 : 0"
+            :min-size="isOpenFolderPanel ? 10 : 0"
+          >
+            <FolderSourcePanel />
+          </ResizablePanel>
+          <ResizableHandle v-if="isOpenFolderPanel" class="hidden md:block" />
           <ResizablePanel class="flex">
             <div
               v-show="!isMobile || (isMobile && showEditor)"
@@ -742,6 +872,10 @@ onUnmounted(() => {
 
       <InsertMpCardDialog />
 
+      <ImportMarkdownDialog />
+
+      <TemplateDialog />
+
       <AlertDialog v-model:open="isOpenConfirmDialog">
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -753,7 +887,7 @@ onUnmounted(() => {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction @click="resetStyle">
-              确认
+              确定
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

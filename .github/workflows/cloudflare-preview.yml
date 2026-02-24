@@ -12,14 +12,14 @@ concurrency:
 jobs:
   deploy-preview:
     runs-on: ubuntu-latest
-    if: github.repository == 'doocs/md'
+    if: github.repository == 'doocs/md' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       deployments: write
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 

@@ -14,12 +14,10 @@ import {
 import juice from 'juice'
 import { Marked } from 'marked'
 
-// 导出新的统一存储 API
 export {
-  LocalEngine,
-  RestfulEngine,
+  LocalStorageEngine as LocalEngine,
+  RestfulStorageEngine as RestfulEngine,
   type StorageEngine,
-  store,
 } from './storage'
 
 // 重新导出供外部使用
@@ -155,7 +153,7 @@ export async function exportPDF(title: string = `untitled`) {
             color: #666;
           }
           @bottom-left {
-            content: "微信 Markdown 编辑器";
+            content: "https://md.doocs.org";
             font-size: 10px;
             color: #999;
           }
@@ -239,6 +237,10 @@ function getThemeStyles(): string {
 
   // 移除 #output 作用域前缀，因为复制后的 HTML 不在 #output 容器中
   let cssContent = themeStyle.textContent
+
+  // 处理 #output {} 为 body {}，避免出现 {} 无效样式
+  cssContent = cssContent.replace(/#output\s*\{/g, 'body {')
+
   // 将 "#output h1" 替换为 "h1"，"#output .class" 替换为 ".class" 等
   // 同时处理换行和多个空格的情况
   cssContent = cssContent.replace(/#output\s+/g, '')
@@ -309,6 +311,8 @@ export async function processClipboardContent(primaryColor: string) {
     .replace(/var\(--blockquote-background\)/g, `#f7f7f7`)
     .replace(/var\(--md-primary-color\)/g, primaryColor)
     .replace(/--md-primary-color:.+?;/g, ``)
+    .replace(/--md-font-family:.+?;/g, ``)
+    .replace(/--md-font-size:.+?;/g, ``)
     .replace(
       /<span class="nodeLabel"([^>]*)><p[^>]*>(.*?)<\/p><\/span>/g,
       `<span class="nodeLabel"$1>$2</span>`,
@@ -350,4 +354,28 @@ export async function processClipboardContent(primaryColor: string) {
       /<tspan([^>]*)>/g,
       `<tspan$1 style="fill: #333333 !important; color: #333333 !important; stroke: none !important;">`,
     )
+
+  // fix: antv infographic 复制到微信公众平台时 <text></text> 被自动转为 <text><tspan></tspan></text> 导致在 Safari 浏览器中文字异常的问题
+  clipboardDiv.querySelectorAll('.infographic-diagram').forEach((diagram) => {
+    diagram.querySelectorAll('text').forEach((textElem) => {
+      // 如果有 dominant-baseline 属性，替换为 dy
+      const dominantBaseline = textElem.getAttribute('dominant-baseline')
+      const variantMap = {
+        'alphabetic': '',
+        'central': '0.35em',
+        'middle': '0.35em',
+        'hanging': '-0.55em',
+        'ideographic': '0.18em',
+        'text-before-edge': '-0.85em',
+        'text-after-edge': '0.15em',
+      }
+      if (dominantBaseline) {
+        textElem.removeAttribute('dominant-baseline')
+        const dy = variantMap[dominantBaseline as keyof typeof variantMap]
+        if (dy) {
+          textElem.setAttribute('dy', dy)
+        }
+      }
+    })
+  })
 }

@@ -1,4 +1,5 @@
-import { addPrefix, store } from '@/utils'
+import { addPrefix } from '@/utils'
+import { store } from '@/utils/storage'
 
 /**
  * UI 状态 Store
@@ -27,12 +28,23 @@ export const useUIStore = defineStore(`ui`, () => {
   // 是否打开文章列表滑块
   const isOpenPostSlider = store.reactive(addPrefix(`is_open_post_slider`), false)
 
+  // 是否打开本地文件夹面板
+  const isOpenFolderPanel = store.reactive(addPrefix(`is_open_folder_panel`), false)
+
   // 是否为移动端
   const isMobile = store.reactive(`isMobile`, false)
 
   // 是否固定显示浮动目录
   const isPinFloatingToc = store.reactive(addPrefix(`isPinFloatingToc`), false)
   const togglePinFloatingToc = useToggle(isPinFloatingToc)
+
+  // 是否显示浮动目录
+  const isShowFloatingToc = store.reactive(addPrefix(`isShowFloatingToc`), true)
+  const toggleShowFloatingToc = useToggle(isShowFloatingToc)
+
+  // 是否启用图片转存（默认关闭）
+  const enableImageReupload = store.reactive(addPrefix(`enableImageReupload`), false)
+  const toggleImageReupload = useToggle(enableImageReupload)
 
   // ==================== 对话框状态 ====================
   // 是否展示 CSS 编辑器
@@ -51,6 +63,16 @@ export const useUIStore = defineStore(`ui`, () => {
   const isShowUploadImgDialog = ref(false)
   const toggleShowUploadImgDialog = useToggle(isShowUploadImgDialog)
 
+  // 是否展示导入 Markdown 对话框
+  const isShowImportMdDialog = ref(false)
+  const toggleShowImportMdDialog = useToggle(isShowImportMdDialog)
+  /** 通过 URL 参数 open 打开时传入的待导入链接，对话框打开后会据此自动执行导入 */
+  const importMdOpenUrl = ref<string | null>(null)
+
+  // 是否展示模板管理对话框
+  const isShowTemplateDialog = ref(false)
+  const toggleShowTemplateDialog = useToggle(isShowTemplateDialog)
+
   // 是否打开重置样式确认对话框
   const isOpenConfirmDialog = ref(false)
 
@@ -64,6 +86,17 @@ export const useUIStore = defineStore(`ui`, () => {
 
   function toggleAIImageDialog(value?: boolean) {
     aiImageDialogVisible.value = value ?? !aiImageDialogVisible.value
+  }
+
+  // 搜索面板状态
+  const searchTabRequest = ref<{ word: string, showReplace: boolean } | null>(null)
+
+  function openSearchTab(searchWord: string = '', showReplace: boolean = false) {
+    searchTabRequest.value = { word: searchWord, showReplace }
+  }
+
+  function clearSearchTabRequest() {
+    searchTabRequest.value = null
   }
 
   // ==================== 工具函数 ====================
@@ -91,6 +124,9 @@ export const useUIStore = defineStore(`ui`, () => {
     isOpenPostSlider,
     isMobile,
     isPinFloatingToc,
+    isShowFloatingToc,
+    isOpenFolderPanel,
+    enableImageReupload,
 
     // ==================== 对话框状态 ====================
     isShowCssEditor,
@@ -101,16 +137,28 @@ export const useUIStore = defineStore(`ui`, () => {
     toggleShowInsertMpCardDialog,
     isShowUploadImgDialog,
     toggleShowUploadImgDialog,
+    isShowImportMdDialog,
+    toggleShowImportMdDialog,
+    importMdOpenUrl,
+    isShowTemplateDialog,
+    toggleShowTemplateDialog,
     isOpenConfirmDialog,
     aiDialogVisible,
     toggleAIDialog,
     aiImageDialogVisible,
     toggleAIImageDialog,
 
+    // ==================== 搜索面板 ====================
+    searchTabRequest,
+    openSearchTab,
+    clearSearchTabRequest,
+
     // ==================== Actions ====================
     toggleDark,
     toggleEditOnLeft,
     toggleAIToolbox,
     togglePinFloatingToc,
+    toggleShowFloatingToc,
+    toggleImageReupload,
   }
 })

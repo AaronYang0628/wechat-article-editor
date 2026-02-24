@@ -15,7 +15,7 @@ jobs:
     if: github.repository == 'doocs/md'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # 获取完整历史，便于推送到新分支
 
@@ -47,7 +47,9 @@ jobs:
           commit_message: 'Deploy: ${{ github.sha }}'
 
       - name: Sync to Gitee
+        id: gitee-sync
         uses: Yikun/hub-mirror-action@master
+        continue-on-error: true
         with:
           src: github/doocs
           dst: gitee/doocs
@@ -58,6 +60,9 @@ jobs:
           debug: true
 
       - name: Deploy Gitee Pages
+        id: gitee-deploy
+        if: steps.gitee-sync.outcome == 'success'
+        continue-on-error: true
         uses: yanglbme/gitee-pages-action@main
         with:
           gitee-username: ${{ secrets.GITEE_USERNAME }}
@@ -69,7 +74,15 @@ jobs:
         run: |
           echo "✅ Build completed successfully!"
           echo "📦 Artifacts pushed to dist branch"
-          echo "🔄 Synced to Gitee repository"
-          echo "🚀 Gitee Pages deployed"
-          echo ""
-          echo "Gitee Pages: https://doocs.gitee.io/md/"
+          if [ "${{ steps.gitee-sync.outcome }}" == "success" ]; then
+            echo "🔄 Synced to Gitee repository"
+            if [ "${{ steps.gitee-deploy.outcome }}" == "success" ]; then
+              echo "🚀 Gitee Pages deployed"
+              echo ""
+              echo "Gitee Pages: https://doocs.gitee.io/md/"
+            else
+              echo "⚠️ Gitee Pages deployment failed or skipped"
+            fi
+          else
+            echo "⚠️ Gitee sync failed or skipped"
+          fi
